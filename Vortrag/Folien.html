@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datenhygiene mit SQL Domains</title>
+<style>
+  :root {
+    --bg:           #ffffff;
+    --bg-soft:      #f1f7fa;
+    --bg-card:      #e8f3f8;
+    --fg:           #0f172a;
+    --fg-muted:     #5b6b7c;
+    --accent:       #0369a1;
+    --accent-deep:  #075985;
+    --border:       #dbe4ea;
+    --code-bg:      #f8fbfd;
+    --code-fg:      #0f172a;
+    --schmutzig:    #dc2626;
+    --schmutzig-bg: #fef2f2;
+    --sauber:       #15803d;
+    --sauber-bg:    #f0fdf4;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font: 24px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--fg); background: var(--bg);
+    overflow: hidden;
+  }
+
+  .slides { position: relative; height: 100vh; width: 100vw; }
+  .slide {
+    position: absolute; inset: 0;
+    padding: 5vh 6vw 9vh;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    overflow: auto;
+  }
+  .slide.active { display: flex; }
+
+  h1 { font-size: 2.7em; margin: 0 0 0.4em; color: var(--fg); line-height: 1.1; letter-spacing: -0.01em; }
+  h2 { font-size: 1.7em; margin: 0 0 0.5em; color: var(--accent); line-height: 1.15; }
+  h3 { font-size: 1.05em; margin: 0 0 0.6em; color: var(--fg-muted); font-weight: 600; }
+  p  { margin: 0 0 0.7em; }
+  a  { color: var(--accent); }
+  ul, ol { margin: 0 0 0.7em; padding-left: 1.4em; }
+  li { margin: 0.3em 0; }
+
+  .lead  { font-size: 1.3em; color: var(--fg-muted); max-width: 32em; }
+  .small { font-size: 0.8em; }
+  .muted { color: var(--fg-muted); }
+  .meta  { color: var(--fg-muted); font-size: 0.9em; }
+  .center { text-align: center; align-items: center; }
+  .center h1, .center h2, .center p { text-align: center; }
+
+  code, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace; }
+  pre {
+    background: var(--code-bg); color: var(--code-fg);
+    padding: 0.6em 0.9em; border-radius: 8px;
+    font-size: 0.7em; line-height: 1.45;
+    overflow-x: auto; margin: 0 0 0.7em;
+    border: 1px solid var(--border);
+  }
+  code.inline {
+    background: var(--bg-soft); padding: 0.05em 0.35em;
+    border-radius: 4px; font-size: 0.9em;
+    border: 1px solid var(--border); color: var(--accent-deep);
+  }
+  pre .kw      { color: #1d4ed8; font-weight: 600; }
+  pre .str     { color: #047857; }
+  pre .num     { color: #b45309; }
+  pre .comment { color: #64748b; font-style: italic; }
+
+  table { border-collapse: collapse; margin: 0.2em 0; font-size: 0.72em; }
+  th, td { padding: 0.2em 0.7em; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); font-weight: 600; font-family: ui-monospace, Consolas, monospace; }
+
+  /* Überschrift der Folie oben in der Mitte; der Inhalt beginnt darunter */
+  .slide > h2.kopf { text-align: center; margin: 0 0 0.6em; font-size: 2em; }
+  .slide:has(> h2.kopf) { padding-top: 4vh; justify-content: flex-start; }
+  /* neben der Plakette eines Checks bleibt die Überschrift frei; eine lange Überschrift bricht dann um */
+  .slide:has(> .check-marke) > h2.kopf { padding: 0 12vw; }
+  .slide:has(> h2.kopf) > :last-child { margin-bottom: auto; }
+  /* Inhalt unter der Überschrift vertikal verteilen: Demo-Folien füllen die Höhe und verteilen ihre Schritte
+     gleichmäßig, das Ergebnis steht mittig in seiner Spalte; alle anderen Folien stehen mittig im freien Raum */
+  .slide:has(> h2.kopf) > h2.kopf + * { margin-top: auto; }
+  .slide:has(> h2.kopf) > .demo { flex: 1; min-height: 0; align-items: stretch; }
+  .slide:has(> h2.kopf) > .demo .schritte { justify-content: space-evenly; }
+  .slide:has(> h2.kopf) > .demo .ergebnis { display: flex; flex-direction: column; justify-content: safe center; }
+  .bloecke { flex: 1; display: flex; flex-direction: column; justify-content: space-evenly; }
+
+  .grid-2 { --spalt: 2em; display: grid; grid-template-columns: 1fr 1fr; gap: var(--spalt); align-items: start; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5em; align-items: start; }
+  .grid-2 > div, .grid-3 > div { min-width: 0; }
+  /* Linien zwischen Blöcken: senkrecht mitten im Spaltenabstand, waagrecht über jedem weiteren Block untereinander */
+  .grid-2 > :not(.card) + :not(.card) {
+    align-self: stretch; border-left: 1px solid var(--border);
+    margin-left: calc(var(--spalt) / -2); padding-left: calc(var(--spalt) / 2);
+  }
+  .bloecke > * + *, .trennlinie { border-top: 1px solid var(--border); padding-top: 0.8em; }
+  .trennlinie { margin-top: 1em; }
+
+  .card { background: var(--bg-card); border-radius: 12px; padding: 0.9em 1.2em; }
+  .card.schmutzig { background: var(--schmutzig-bg); border-left: 5px solid var(--schmutzig); }
+  .card.sauber { background: var(--sauber-bg); border-left: 5px solid var(--sauber); }
+  .note { border-left: 4px solid var(--accent); padding: 0.3em 0 0.3em 1em; color: var(--fg-muted); font-size: 0.85em; }
+
+  .frage { font-size: 2.2em; font-weight: 700; color: var(--sauber); text-align: center; margin: 0.4em 0 0; }
+  .person { display: flex; gap: 1.2em; align-items: flex-start; }
+  /* Personenkarte so breit wie ihr Inhalt, waagrecht mittig */
+  .card.person { width: fit-content; align-self: center; }
+  .portrait { width: 140px; height: 140px; flex: none; border-radius: 50%; object-fit: cover; }
+
+  /* Bauplan einer Domain */
+  .bauplan { display: grid; grid-template-columns: auto 1fr; gap: 0.25em 1.2em; font-size: 0.85em; align-items: baseline; }
+  .bauplan dt { font-family: ui-monospace, Consolas, monospace; color: var(--accent-deep); font-weight: 600; }
+  .bauplan dd { margin: 0; }
+
+  /* Schaubild: eine Domain, viele Spalten */
+  svg.schaubild { width: 100%; max-height: 46vh; }
+  .sb-domain { fill: var(--bg-card); stroke: var(--accent); stroke-width: 2.5; }
+  .sb-spalte { fill: #fff; stroke: var(--border); stroke-width: 2; }
+  .sb-pfeil  { stroke: var(--accent); stroke-width: 2.5; fill: none; marker-end: url(#spitze); }
+  .sb-titel  { font: 700 26px ui-monospace, Consolas, monospace; fill: var(--accent-deep); }
+  .sb-text   { font: 20px system-ui, sans-serif; fill: var(--fg-muted); }
+  .sb-name   { font: 600 24px ui-monospace, Consolas, monospace; fill: var(--fg); }
+
+  /* Datenmodell des Stadtwerks: rot sind die Spalten, deren Regel jedes Mal anders umgesetzt ist */
+  svg.schaubild.datenmodell { max-height: 44vh; }
+  .dm-rahmen     { fill: #fff; stroke: var(--border); stroke-width: 2; }
+  .dm-kopf       { fill: var(--bg-card); }
+  .dm-name       { font: 700 24px ui-monospace, Consolas, monospace; fill: var(--accent-deep); }
+  .dm-spalte     { font: 20px ui-monospace, Consolas, monospace; fill: var(--fg); }
+  .dm-typ        { font: 18px system-ui, sans-serif; fill: var(--fg-muted); }
+  .dm-marke      { font: 700 15px system-ui, sans-serif; fill: var(--accent); }
+  .dm-schmutzig  { fill: var(--schmutzig); font-weight: 600; }
+  .dm-fk         { stroke: #5b6b7c; stroke-width: 2.5; fill: none; marker-end: url(#fk-spitze); }
+  .dm-nummer      { fill: var(--schmutzig); }
+  .dm-nummer-text { font: 700 17px system-ui, sans-serif; fill: #fff; }
+
+  /* die fünf Checks: nummeriert wie im Datenmodell, mit Verweis auf die Folien, auf denen wir sie lösen */
+  ol.checks { columns: 2; column-gap: 2.5em; margin: 0; padding: 0; list-style: none; counter-reset: check; font-size: 0.72em; }
+  ol.checks li { break-inside: avoid; margin: 0 0 0.7em; padding-left: 2.1em; position: relative; counter-increment: check; }
+  ol.checks li::before {
+    content: counter(check); position: absolute; left: 0; top: 0.05em;
+    width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--schmutzig); color: #fff;
+    font-weight: 700; text-align: center; line-height: 1.5em;
+  }
+  ol.checks .wo { font-family: ui-monospace, Consolas, monospace; color: var(--fg-muted); }
+  a.folienverweis { font-weight: 600; text-decoration: none; white-space: nowrap; }
+  a.folienverweis:hover { text-decoration: underline; }
+
+  /* Plakette oben links: welchen Check diese Folie löst */
+  .check-marke {
+    position: absolute; top: calc(4vh + 0.5em); left: 6vw; z-index: 5;
+    display: flex; align-items: center; gap: 0.45em;
+    border: 2px solid var(--schmutzig); border-radius: 999px; padding: 0.1em 0.8em 0.1em 0.2em;
+    font-size: 0.7em; font-weight: 600; color: var(--schmutzig); background: #fff;
+  }
+  .check-marke .nr {
+    width: 1.6em; height: 1.6em; border-radius: 50%; background: var(--schmutzig); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 700;
+  }
+
+  /* Demo: links die Schritte mit Knopf, rechts das Ergebnis des zuletzt ausgeführten Schritts */
+  .demo { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 2em; align-items: start; }
+  .demo .schritte { display: flex; flex-direction: column; gap: 0.45em; min-width: 0; }
+  /* der Kasten ist so breit wie das SQL darin; der Status zählt nicht mit */
+  .schritt { border: 1px solid var(--border); border-radius: 10px; padding: 0.3em 0.6em 0.4em; background: #fff;
+             width: fit-content; max-width: 100%; }
+  .schritt.naechster { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.12); }
+  .schritt header { display: flex; align-items: center; gap: 0.6em; font-size: 0.6em; min-height: 1.9em; }
+  .schritt .nr { font: 700 1em ui-monospace, Consolas, monospace; color: var(--accent); }
+  .schritt button.los {
+    border: 1px solid var(--accent); background: #fff; color: var(--accent);
+    border-radius: 999px; padding: 0.1em 0.8em; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .schritt button.los:hover { background: var(--accent); color: #fff; }
+  .schritt button.los:disabled { opacity: 0.5; cursor: default; }
+  .schritt .status { flex: 1 0 0; width: 0; min-width: 8em; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .schritt .status.ok { color: var(--sauber); font-weight: 600; }
+  .schritt .status.fehler { color: var(--schmutzig); font-weight: 600; }
+  .schritt pre { margin: 0.25em 0 0; font-size: 0.66em; padding: 0.4em 0.7em; }
+  /* breit: lange Codezeilen bekommen mehr Platz; kompakt: viele Schritte auf einer Folie */
+  .demo.breit { grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr); }
+  .demo.unter { grid-template-columns: minmax(0, 1fr); gap: 0.8em; }
+  .demo.unter .ergebnis { border-left: none; margin-left: 0; padding-left: 0; }
+  /* in .bloecke werden Schritte und Ergebnis zu eigenen Blöcken, gleichmäßig verteilt und durch eine Linie getrennt */
+  .bloecke > .demo.unter { display: contents; }
+  .bloecke > .demo.unter > .ergebnis { border-top: 1px solid var(--border); padding-top: 0.8em; }
+  .demo.kompakt .schritte { gap: 0.25em; }
+  .demo.kompakt .schritt { padding: 0.15em 0.6em 0.25em; }
+  .demo.kompakt .schritt header { min-height: 1.5em; line-height: 1.2; }
+  .demo.kompakt .schritt button.los { padding: 0 0.8em; }
+  .demo.kompakt .ergebnis { max-height: 60vh; }
+  .demo.kompakt .schritt pre { font-size: 0.58em; padding: 0.3em 0.6em; }
+  .ergebnis {
+    align-self: stretch; min-width: 0; overflow: auto; max-height: 74vh;
+    border-left: 1px solid var(--border); margin-left: -1em; padding-left: 1em;
+  }
+  .ergebnis .leer { color: var(--fg-muted); font-size: 0.75em; font-style: italic; }
+  .ergebnis .titel { font-size: 0.6em; color: var(--fg-muted); margin-bottom: 0.3em; }
+  .ergebnis td.wahr   { color: var(--sauber); font-weight: 600; }
+  .ergebnis td.falsch { color: var(--schmutzig); font-weight: 600; }
+  .ergebnis td.null   { color: var(--fg-muted); font-style: italic; }
+  .ergebnis td.lang   { font-family: ui-monospace, Consolas, monospace; font-size: 0.85em; word-break: break-all; }
+  .meldung {
+    border-radius: 10px; padding: 0.6em 0.9em; font-size: 0.75em;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .meldung.ok     { background: var(--sauber-bg); border: 2px solid var(--sauber); color: var(--sauber); font-weight: 600; }
+  .meldung.fehler { background: var(--schmutzig-bg); border: 2px solid var(--schmutzig);
+                    font-family: ui-monospace, Consolas, monospace; }
+
+  /* Stolperstein: Fallen, die man kennen sollte */
+  .stolperstein {
+    border: 2px solid var(--schmutzig); background: var(--schmutzig-bg); border-radius: 10px;
+    padding: 0.35em 0.9em; font-size: 0.8em; margin-top: 0.5em;
+  }
+  .stolperstein::before { content: 'Stolperstein: '; font-weight: 800; color: var(--schmutzig); }
+
+  /* Zurücksetzen auf der Titelfolie */
+  .zuruecksetzen { margin-top: 2em; font-size: 0.6em; color: var(--fg-muted); }
+  .zuruecksetzen button {
+    border: 1px solid var(--border); background: #fff; color: var(--fg-muted);
+    border-radius: 999px; padding: 0.2em 0.9em; font: inherit; cursor: pointer; margin-right: 0.6em;
+  }
+  .zuruecksetzen button:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* QR-Codes */
+  .qr-grid { display: flex; gap: 3em; justify-content: center; margin-top: 1.2em; }
+  .qr-grid figure { margin: 0; text-align: center; }
+  .qr-grid .qr {
+    width: 320px; height: 320px; margin: 0 auto 0.5em;
+    border: 2px dashed #f97316; border-radius: 12px; background: #fff7ed;
+    display: flex; align-items: center; justify-content: center;
+    color: #c2410c; font-size: 0.7em; padding: 0.5em;
+  }
+  .qr-grid .qr.qr-fertig { border: 1px solid var(--border); background: #fff; padding: 0; }
+  .qr-grid .qr.qr-fertig svg { width: 100%; height: 100%; display: block; }
+  .qr-grid figcaption { font-size: 0.8em; color: var(--fg-muted); }
+
+  /* Fußzeile auf den inneren Folien */
+  .footer-text {
+    position: fixed; left: 6vw; bottom: 2.2vh;
+    color: var(--fg-muted); font-size: 0.6em; opacity: 0.7;
+    pointer-events: none; z-index: 50;
+  }
+  body.first-slide .footer-text, body.last-slide .footer-text { display: none; }
+
+  /* Navigation */
+  nav.controls {
+    position: fixed; right: 24px; bottom: 40px;
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 8px 12px; border-radius: 999px;
+    box-shadow: 0 4px 16px rgba(3, 105, 161, 0.12);
+    border: 1px solid var(--border);
+    user-select: none; z-index: 100;
+  }
+  nav.controls button {
+    width: 36px; height: 36px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+    border-radius: 50%; cursor: pointer; font-size: 18px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  nav.controls button:hover:not(:disabled) { background: var(--accent); color: white; border-color: var(--accent); }
+  nav.controls button:disabled { opacity: 0.3; cursor: default; }
+  nav.controls .counter { font-variant-numeric: tabular-nums; color: var(--fg-muted); font-size: 0.7em; min-width: 4em; text-align: center; }
+  nav.controls .clock { display: none; }
+  body.show-clock nav.controls .clock { display: inline; }
+  nav.controls .clock .rest { font-weight: 700; }
+  /* mit eingeblendeter Uhr steht die Seitenzahl in der Uhr */
+  body.show-clock nav.controls #counter { display: none; }
+  nav.controls .clock .im-plan   { color: var(--sauber); }
+  nav.controls .clock .im-verzug { color: var(--schmutzig); }
+  .keys {
+    position: fixed; right: 24px; bottom: 12px; z-index: 100;
+    color: var(--fg-muted); font-size: 0.5em; user-select: none; pointer-events: none;
+  }
+  .keys kbd {
+    font: inherit; font-weight: 700; color: var(--fg);
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 0.35em; background: #fff;
+  }
+  .progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--accent); width: 0; transition: width 0.3s ease; z-index: 100; }
+
+  /* Druckansicht (Folien.html?druck): alle Folien untereinander, je eine Seite im Format 1920 x 1080 */
+  @page { size: 1920px 1080px; margin: 0; }
+  body.druck, body.druck .slides { height: auto; overflow: visible; }
+  body.druck .slide { display: flex; position: relative; width: 1920px; height: 1080px; break-after: page; page-break-after: always; }
+  body.druck nav.controls, body.druck .progress, body.druck .footer-text, body.druck .keys,
+  body.druck .zuruecksetzen, body.druck button.los { display: none; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<div class="slides">
+
+  <!-- 1 Einführung ============================================================================================== -->
+  <section class="slide center" data-duration="0:30">
+    <h1>„Wollen wir mal sauber machen?“</h1>
+    <p class="lead">Datenhygiene mit SQL Domains</p>
+    <p class="meta" style="margin-top: 2em;">
+      Knut Göttling &middot; Chief Platform Architect &middot; Enignum AI GmbH<br>
+      DOAG 2026 &middot; Nürnberg &middot; 19. November 2026
+    </p>
+    <p class="zuruecksetzen"><button id="zuruecksetzen">Wildwuchs herstellen</button><span id="zuruecksetzen-status"></span></p>
+  </section>
+  <section class="slide" data-duration="0:30">
+    <h2 class="kopf">Wer hier putzt</h2>
+    <div class="bloecke">
+      <div class="card person">
+        <img class="portrait" src="assets/knut.jpg" alt="Knut Göttling">
+        <div>
+          <strong>Knut Göttling</strong>
+          <p class="muted">Chief Platform Architect<br>Enignum AI GmbH, Hamburg<br>Oracle ACE Associate</p>
+        </div>
+      </div>
+      <div>
+        <h3>Das Beispiel</h3>
+        <p>Ein erfundenes Stadtwerk: Kunden, Lieferanten, Mitarbeiter, Fahrzeuge, Leitungen, Störungen.</p>
+        <p>Über Jahre von verschiedenen Teams gewachsen &ndash; und genau so sieht es aus.</p>
+        <p class="note">Alle Abfragen laufen live auf der Datenbank, per Knopf auf der Folie.</p>
+      </div>
+    </div>
+  </section>
+  <section class="slide" data-duration="1:00">
+    <h2 class="kopf">Das Stadtwerk</h2>
+    <svg class="schaubild datenmodell" viewBox="0 0 1600 590" role="img" aria-label="Datenmodell des Stadtwerks">
+      <defs>
+        <marker id="fk-spitze" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5b6b7c"/>
+        </marker>
+      </defs>
+      <g class="dm-tabelle">
+        <rect class="dm-rahmen" x="40" y="20" width="460" height="200" rx="12"/>
+        <path class="dm-kopf" d="M40,32 a12,12 0 0 1 12,-12 h436 a12,12 0 0 1 12,12 v34 h-460 z"/>
+        <text class="dm-name" x="58" y="51">kunde</text>
+        <text class="dm-marke" x="58" y="93">PK</text>
+        <text class="dm-spalte" x="102" y="93">kunde_id</text>
+        <text class="dm-typ" x="482" y="93" text-anchor="end">integer</text>
+        <text class="dm-spalte" x="102" y="129">name</text>
+        <text class="dm-typ" x="482" y="129" text-anchor="end">varchar2(100)</text>
+        <circle class="dm-nummer" cx="72" cy="158" r="13"/>
+        <text class="dm-nummer-text" x="72" y="164" text-anchor="middle">3</text>
+        <text class="dm-spalte dm-schmutzig" x="102" y="165">email</text>
+        <text class="dm-typ dm-schmutzig" x="482" y="165" text-anchor="end">varchar2(200)</text>
+        <circle class="dm-nummer" cx="72" cy="194" r="13"/>
+        <text class="dm-nummer-text" x="72" y="200" text-anchor="middle">4</text>
+        <text class="dm-spalte dm-schmutzig" x="102" y="201">telefon</text>
+        <text class="dm-typ dm-schmutzig" x="482" y="201" text-anchor="end">varchar2(50)</text>
+      </g>
+      <g class="dm-tabelle">
+        <rect class="dm-rahmen" x="570" y="20" width="460" height="200" rx="12"/>
+        <path class="dm-kopf" d="M570,32 a12,12 0 0 1 12,-12 h436 a12,12 0 0 1 12,12 v34 h-460 z"/>
+        <text class="dm-name" x="588" y="51">lieferant</text>
+        <text class="dm-marke" x="588" y="93">PK</text>
+        <text class="dm-spalte" x="632" y="93">lieferant_id</text>
+        <text class="dm-typ" x="1012" y="93" text-anchor="end">integer</text>
+        <text class="dm-spalte" x="632" y="129">firma</text>
+        <text class="dm-typ" x="1012" y="129" text-anchor="end">varchar2(100)</text>
+        <circle class="dm-nummer" cx="602" cy="158" r="13"/>
+        <text class="dm-nummer-text" x="602" y="164" text-anchor="middle">3</text>
+        <text class="dm-spalte dm-schmutzig" x="632" y="165">email</text>
+        <text class="dm-typ dm-schmutzig" x="1012" y="165" text-anchor="end">varchar2(100)</text>
+        <circle class="dm-nummer" cx="602" cy="194" r="13"/>
+        <text class="dm-nummer-text" x="602" y="200" text-anchor="middle">4</text>
+        <text class="dm-spalte dm-schmutzig" x="632" y="201">telefon</text>
+        <text class="dm-typ dm-schmutzig" x="1012" y="201" text-anchor="end">varchar2(30)</text>
+      </g>
+      <g class="dm-tabelle">
+        <rect class="dm-rahmen" x="1100" y="20" width="460" height="164" rx="12"/>
+        <path class="dm-kopf" d="M1100,32 a12,12 0 0 1 12,-12 h436 a12,12 0 0 1 12,12 v34 h-460 z"/>
+        <text class="dm-name" x="1118" y="51">mitarbeiter</text>
+        <text class="dm-marke" x="1118" y="93">PK</text>
+        <text class="dm-spalte" x="1162" y="93">mitarbeiter_id</text>
+        <text class="dm-typ" x="1542" y="93" text-anchor="end">integer</text>
+        <text class="dm-spalte" x="1162" y="129">name</text>
+        <text class="dm-typ" x="1542" y="129" text-anchor="end">varchar2(100)</text>
+        <circle class="dm-nummer" cx="1132" cy="158" r="13"/>
+        <text class="dm-nummer-text" x="1132" y="164" text-anchor="middle">3</text>
+        <text class="dm-spalte dm-schmutzig" x="1162" y="165">email</text>
+        <text class="dm-typ dm-schmutzig" x="1542" y="165" text-anchor="end">varchar2(255)</text>
+      </g>
+      <g class="dm-tabelle">
+        <rect class="dm-rahmen" x="40" y="330" width="460" height="236" rx="12"/>
+        <path class="dm-kopf" d="M40,342 a12,12 0 0 1 12,-12 h436 a12,12 0 0 1 12,12 v34 h-460 z"/>
+        <text class="dm-name" x="58" y="361">stoerung</text>
+        <text class="dm-marke" x="58" y="403">PK</text>
+        <text class="dm-spalte" x="102" y="403">stoerung_id</text>
+        <text class="dm-typ" x="482" y="403" text-anchor="end">integer</text>
+        <text class="dm-marke" x="58" y="439">FK</text>
+        <text class="dm-spalte" x="102" y="439">leitung_id</text>
+        <text class="dm-typ" x="482" y="439" text-anchor="end">integer</text>
+        <text class="dm-spalte" x="102" y="475">gemeldet_am</text>
+        <text class="dm-typ" x="482" y="475" text-anchor="end">date</text>
+        <text class="dm-spalte" x="102" y="511">beschreibung</text>
+        <text class="dm-typ" x="482" y="511" text-anchor="end">varchar2(200)</text>
+        <circle class="dm-nummer" cx="72" cy="540" r="13"/>
+        <text class="dm-nummer-text" x="72" y="546" text-anchor="middle">1</text>
+        <text class="dm-spalte dm-schmutzig" x="102" y="547">status</text>
+        <text class="dm-typ dm-schmutzig" x="482" y="547" text-anchor="end">varchar2(20)</text>
+      </g>
+      <g class="dm-tabelle">
+        <rect class="dm-rahmen" x="570" y="330" width="460" height="164" rx="12"/>
+        <path class="dm-kopf" d="M570,342 a12,12 0 0 1 12,-12 h436 a12,12 0 0 1 12,12 v34 h-460 z"/>
+        <text class="dm-name" x="588" y="361">leitung</text>
+        <text class="dm-marke" x="588" y="403">PK</text>
+        <text class="dm-spalte" x="632" y="403">leitung_id</text>
+        <text class="dm-typ" x="1012" y="403" text-anchor="end">integer</text>
+        <text class="dm-spalte" x="632" y="439">bezeichnung</text>
+        <text class="dm-typ" x="1012" y="439" text-anchor="end">varchar2(100)</text>
+        <circle class="dm-nummer" cx="602" cy="468" r="13"/>
+        <text class="dm-nummer-text" x="602" y="474" text-anchor="middle">2</text>
+        <text class="dm-spalte dm-schmutzig" x="632" y="475">spannungsebene</text>
+        <text class="dm-typ dm-schmutzig" x="1012" y="475" text-anchor="end">varchar2(30)</text>
+      </g>
+      <g class="dm-tabelle">
+        <rect class="dm-rahmen" x="1100" y="330" width="460" height="164" rx="12"/>
+        <path class="dm-kopf" d="M1100,342 a12,12 0 0 1 12,-12 h436 a12,12 0 0 1 12,12 v34 h-460 z"/>
+        <text class="dm-name" x="1118" y="361">fahrzeug</text>
+        <text class="dm-marke" x="1118" y="403">PK</text>
+        <text class="dm-spalte" x="1162" y="403">fahrzeug_id</text>
+        <text class="dm-typ" x="1542" y="403" text-anchor="end">integer</text>
+        <circle class="dm-nummer" cx="1132" cy="432" r="13"/>
+        <text class="dm-nummer-text" x="1132" y="438" text-anchor="middle">5</text>
+        <text class="dm-spalte dm-schmutzig" x="1162" y="439">kennzeichen</text>
+        <text class="dm-typ dm-schmutzig" x="1542" y="439" text-anchor="end">varchar2(15)</text>
+        <text class="dm-marke" x="1118" y="475">FK</text>
+        <text class="dm-spalte" x="1162" y="475">mitarbeiter_id</text>
+        <text class="dm-typ" x="1542" y="475" text-anchor="end">integer</text>
+      </g>
+      <path class="dm-fk" d="M500,430 L570,430"/>
+      <path class="dm-fk" d="M1330.0,330 L1330.0,184"/>
+    </svg>
+    <div class="trennlinie">
+      <h3>Rot sind die Spalten, deren fachliche Regel jedes Mal anders umgesetzt ist</h3>
+      <ol class="checks">
+        <li id="check-1" data-name="Status der Störung"><b>Status der Störung</b> <span class="wo">stoerung</span><br>
+          Eine Werteliste, aber mit neu und NEU, erledigt und Erledigt.</li>
+        <li id="check-2" data-name="Spannungsebene"><b>Spannungsebene</b> <span class="wo">leitung</span><br>
+          Freitext, 14 Schreibweisen für 3 Ebenen.</li>
+        <li id="check-3" data-name="E-Mail-Adresse"><b>E-Mail-Adresse</b> <span class="wo">kunde, lieferant, mitarbeiter</span><br>
+          Bei Kunden ein strenger Check, bei Lieferanten ein laxer mit Trigger, bei Mitarbeitern gar keiner.</li>
+        <li id="check-4" data-name="Telefonnummer"><b>Telefonnummer</b> <span class="wo">kunde, lieferant</span><br>
+          Ungeprüft, von „0911/234567“ bis „folgt“.</li>
+        <li id="check-5" data-name="Kennzeichen"><b>Kennzeichen</b> <span class="wo">fahrzeug</span><br>
+          Mit und ohne Bindestrich, mit Leerzeichen an allen Stellen, klein geschrieben.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 2 Was eine Domain ist ===================================================================================== -->
+  <section class="slide" data-duration="1:30">
+    <h2 class="kopf">Der Bauplan einer Domain</h2>
+    <div class="grid-2">
+      <div>
+        <h3>Die Anweisung</h3>
+        <pre class="sql">create domain &lt;name&gt; as &lt;datentyp&gt;
+  [strict]
+  [default &lt;ausdruck&gt;]
+  [not null]
+  [constraint &lt;name&gt; check (&lt;bedingung mit value&gt;)]
+  [display &lt;ausdruck&gt;]
+  [order &lt;ausdruck&gt;]
+  [annotations (...)];</pre>
+      </div>
+      <div>
+        <h3>Was die Spalte erbt</h3>
+        <dl class="bauplan">
+          <dt>datentyp</dt>    <dd>Grundtyp, die Spalte behält ihren eigenen</dd>
+          <dt>strict</dt>      <dd>Typ und Länge müssen genau passen</dd>
+          <dt>default</dt>     <dd>Vorgabewert</dd>
+          <dt>not null</dt>    <dd>Pflichtfeld</dd>
+          <dt>check</dt>       <dd>die Regel, <code class="inline">value</code> steht für den Wert</dd>
+          <dt>display</dt>     <dd>Anzeige über <code class="inline">domain_display</code></dd>
+          <dt>order</dt>       <dd>Sortierung über <code class="inline">domain_order</code></dd>
+          <dt>annotations</dt> <dd>Beschreibung im Data Dictionary</dd>
+        </dl>
+      </div>
+    </div>
+    <p class="note trennlinie">Seit SQL-92 im Standard, bekannt etwa aus PostgreSQL. Oracle seit 23ai &ndash; plus Display, Order und Annotations.</p>
+  </section>
+  <section class="slide" data-duration="1:30">
+    <h2 class="kopf">Eine Definition, viele Spalten</h2>
+    <svg class="schaubild" viewBox="0 0 1200 420" role="img" aria-label="Die Domain email_d hängt an drei Spalten">
+      <defs>
+        <marker id="spitze" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#0369a1"/>
+        </marker>
+      </defs>
+      <rect class="sb-domain" x="60" y="130" width="380" height="160" rx="16"/>
+      <text class="sb-titel" x="250" y="185" text-anchor="middle">email_d</text>
+      <text class="sb-text" x="250" y="225" text-anchor="middle">Regel &middot; Anzeige &middot; Sortierung</text>
+      <text class="sb-text" x="250" y="258" text-anchor="middle">user_domains</text>
+      <path class="sb-pfeil" d="M440,170 C560,170 600,70 740,70"/>
+      <path class="sb-pfeil" d="M440,210 L740,210"/>
+      <path class="sb-pfeil" d="M440,250 C560,250 600,350 740,350"/>
+      <rect class="sb-spalte" x="750" y="30" width="390" height="80" rx="12"/>
+      <rect class="sb-spalte" x="750" y="170" width="390" height="80" rx="12"/>
+      <rect class="sb-spalte" x="750" y="310" width="390" height="80" rx="12"/>
+      <text class="sb-name" x="945" y="80" text-anchor="middle">kunde.email</text>
+      <text class="sb-name" x="945" y="220" text-anchor="middle">lieferant.email</text>
+      <text class="sb-name" x="945" y="360" text-anchor="middle">mitarbeiter.email</text>
+    </svg>
+    <div class="grid-2 trennlinie">
+      <div>
+        <h3>Ein Objekt im Data Dictionary</h3>
+        <p class="small">Die Spalte behält ihren Datentyp und trägt nur den Verweis: <code class="inline">user_tab_cols.domain_name</code>.</p>
+      </div>
+      <div>
+        <h3>Arten von Domains</h3>
+        <p class="small">Einspaltig und Enum zeigen wir heute. Mehrspaltig, flexibel und JSON gibt es auch.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 Status der Störung: Enum-Domain ========================================================================= -->
+  <section class="slide" id="f-werteliste" data-check="1" data-duration="1:30">
+    <h2 class="kopf">Eine Werteliste als Domain</h2>
+    <div class="demo" data-schritte="7.1 7.2"></div>
+    <p class="note">Ohne eigene Werte nummeriert Oracle nach der Reihenfolge der Liste. Werte immer selbst angeben.</p>
+  </section>
+  <section class="slide" data-check="1" data-duration="1:30">
+    <h2 class="kopf">Den Status umstellen</h2>
+    <div class="demo" data-schritte="7.3 7.4 7.5 7.6 7.7"></div>
+  </section>
+  <section class="slide" id="f-reihenfolge" data-check="1" data-duration="0:45">
+    <h2 class="kopf">Die Reihenfolge</h2>
+    <div class="demo" data-schritte="7.8 7.9 7.8"></div>
+    <p class="note">Display und Order lassen sich ändern &ndash; die Werteliste nicht.</p>
+  </section>
+
+  <!-- 4 Spannungsebene: Enum mit Kurzform ======================================================================= -->
+  <section class="slide" id="f-spannung" data-check="2" data-duration="0:45">
+    <h2 class="kopf">Spannungsebene mit Kurzform</h2>
+    <div class="demo breit kompakt" data-schritte="2.3 7.10 7.11"></div>
+  </section>
+  <section class="slide" id="f-apex" data-check="2" data-duration="0:30">
+    <h2 class="kopf">Als Werteliste in APEX</h2>
+    <div class="demo" data-schritte="7.12"></div>
+    <p class="note">Jede Kurzform ist eine eigene Zeile: für eine Werteliste filtern.</p>
+  </section>
+
+  <!-- 5 E-Mail: Wildwuchs, Domain, Migration ==================================================================== -->
+  <section class="slide" data-check="3" data-duration="1:30">
+    <h2 class="kopf">Dieselbe Regel, dreimal anders und an drei verschiedenen Stellen</h2>
+    <div class="bloecke">
+      <div class="demo unter" data-schritte="2.1"></div>
+      <p class="note">Strenger Check, laxer Check mit Trigger, gar nichts &ndash; „das prüft die Anwendung“.</p>
+    </div>
+  </section>
+  <section class="slide" data-check="3" data-duration="1:30">
+    <h2 class="kopf">Was durchgerutscht ist</h2>
+    <div class="demo" data-schritte="2.2"></div>
+  </section>
+  <section class="slide" id="f-email-anlegen" data-check="3" data-duration="1:00">
+    <h2 class="kopf">Die E-Mail-Domain anlegen</h2>
+    <div class="demo unter" data-schritte="4.1"></div>
+    <p class="note">Sortiert wird erst nach Domain, dann nach Name: <code class="inline">anna.schmidt@example.com</code> wird zu <code class="inline">example.com anna.schmidt</code>.</p>
+  </section>
+  <section class="slide" data-check="3" data-duration="1:30">
+    <h2 class="kopf">An die Kunden hängen</h2>
+    <div class="demo" data-schritte="4.2 4.3"></div>
+    <p class="note">Die Kunden sind schon sauber. Lieferanten und Mitarbeiter kommen erst bei der Migration dran.</p>
+  </section>
+  <section class="slide" id="f-email-koennen" data-check="3" data-duration="1:30">
+    <h2 class="kopf">Was die Domain kann</h2>
+    <div class="demo" data-schritte="4.4 4.5 4.6"></div>
+  </section>
+  <section class="slide" id="f-anhaengen-scheitert" data-check="3" data-duration="1:00">
+    <h2 class="kopf">Anhängen scheitert</h2>
+    <div class="demo" data-schritte="6.1"></div>
+    <p class="note">Das Anhängen prüft jede vorhandene Zeile. Die Meldung nennt weder Constraint noch Domain.</p>
+  </section>
+  <section class="slide" data-check="3" data-duration="1:00">
+    <h2 class="kopf">Wer stört?</h2>
+    <div class="demo" data-schritte="6.2"></div>
+    <p class="note"><code class="inline">domain_check</code> findet die Störenfriede, bevor etwas angehängt ist.</p>
+  </section>
+  <section class="slide" data-check="3" data-duration="1:30">
+    <h2 class="kopf">Aufräumen</h2>
+    <div class="demo kompakt" data-schritte="6.3 6.4 6.2 6.5 6.6"></div>
+    <p class="note">Sauber machen heißt nicht nur Regex: Den Rest entscheidet ein Mensch.</p>
+  </section>
+  <section class="slide" data-check="3" data-duration="1:00">
+    <h2 class="kopf">Jetzt passt es</h2>
+    <div class="demo" data-schritte="6.7 6.8 6.9"></div>
+  </section>
+  <section class="slide" id="f-altlasten" data-check="3" data-duration="1:30">
+    <h2 class="kopf">Altlasten entfernen</h2>
+    <div class="demo" data-schritte="6.10 6.11 6.12 6.13"></div>
+    <p class="note">Eine Domain prüft und zeigt an &ndash; gespeicherte Daten verändert sie nicht.</p>
+  </section>
+
+  <!-- 6 Telefonnummer und Kennzeichen =========================================================================== -->
+  <section class="slide" data-duration="1:30">
+    <h2 class="kopf">Was Oracle schon mitbringt</h2>
+    <div class="demo breit" data-schritte="5.1 5.2"></div>
+    <p class="note">Erst nachsehen, dann selbst bauen &ndash; aber die Regel prüfen.</p>
+  </section>
+  <section class="slide" id="f-telefon" data-check="4" data-duration="1:15">
+    <h2 class="kopf">Telefonnummer</h2>
+    <div class="demo" data-schritte="5.3"></div>
+    <p class="note">Die Domain setzt das Format durch. Vereinheitlichen muss man vorher selbst &ndash; und <code class="inline">0911</code> zeigt: Die Regel ist zu schwach.</p>
+  </section>
+  <section class="slide" id="f-kennzeichen" data-check="5" data-duration="1:15">
+    <h2 class="kopf">Kennzeichen</h2>
+    <div class="demo breit kompakt" data-schritte="5.4 5.5"></div>
+    <div class="stolperstein"><code class="inline">[A-Z]</code> hängt an der Sortierung der Sitzung: Mit <code class="inline">NLS_SORT = GERMAN</code> trifft es auch Kleinbuchstaben. <code class="inline">[[:upper:]]</code> verhält sich immer gleich.</div>
+  </section>
+
+  <!-- 7 Stolpersteine =========================================================================================== -->
+  <section class="slide" data-duration="1:30">
+    <h2 class="kopf">Ein Tippfehler, drei Fehlermeldungen</h2>
+    <div class="demo" data-schritte="8.1 8.2 8.3"></div>
+    <p class="note">Die Namen sind nicht case-sensitiv: <code class="inline">.Neu</code> geht, <code class="inline">."neu"</code> nicht.</p>
+  </section>
+  <section class="slide" data-duration="1:30">
+    <h2 class="kopf">Domains und PL/SQL</h2>
+    <div class="demo" data-schritte="8.4 8.5 8.6"></div>
+    <p class="note">PL/SQL kennt keine Domains: weder Variablen noch Parameter, <code class="inline">%type</code> liefert nur den Grundtyp. <code class="inline">domain_check</code> geht nur über SQL.</p>
+  </section>
+
+  <!-- 8 Domains weiterentwickeln ================================================================================ -->
+  <section class="slide" id="f-aendern" data-check="1" data-duration="1:00">
+    <h2 class="kopf">Was sich ändern lässt</h2>
+    <div class="demo" data-schritte="9.1"></div>
+    <p class="note"><code class="inline">alter domain</code> ändert nur Display, Order und Annotations. Ein neuer Wert heißt: neu anlegen.</p>
+  </section>
+  <section class="slide" data-check="1" data-duration="1:00">
+    <h2 class="kopf">Löschen ist gesperrt</h2>
+    <div class="demo" data-schritte="9.2 9.3"></div>
+    <p class="note">Das Data Dictionary liefert nicht die ursprüngliche Anweisung &ndash; die <code class="inline">create</code>-Anweisung gehört ins Repo.</p>
+  </section>
+  <section class="slide" data-check="1" data-duration="2:00">
+    <h2 class="kopf">force oder force preserve</h2>
+    <div class="demo" data-schritte="9.4 9.5"></div>
+    <div class="grid-2 trennlinie">
+      <div><h3>force</h3><p class="small">Der geerbte Check verschwindet. Bis zum neuen Anhängen ist die Spalte ungeschützt.</p></div>
+      <div><h3>force preserve</h3><p class="small">Der Check bleibt als gewöhnlicher Constraint <code class="inline">SYS_C…</code> stehen.</p></div>
+    </div>
+  </section>
+  <section class="slide" data-check="1" data-duration="2:00">
+    <h2 class="kopf">Die Falle mit preserve</h2>
+    <div class="demo kompakt" data-schritte="9.6 9.7 9.8 9.5 9.9"></div>
+    <div class="stolperstein">Der bewahrte alte Check kennt <code class="inline">storniert</code> nicht &ndash; erst wenn man ihn löscht, ist man fertig.</div>
+  </section>
+
+  <!-- 9 Wer ist betroffen? ====================================================================================== -->
+  <section class="slide" data-duration="2:00">
+    <h2 class="kopf">Vor dem DROP DOMAIN</h2>
+    <div class="demo" data-schritte="10.1 10.2"></div>
+    <p class="note">Dazu <code class="inline">user_constraints.domain_name</code>: Er unterscheidet geerbte Checks von eigenen.</p>
+  </section>
+  <section class="slide" id="f-nach-umbau" data-check="1" data-duration="1:00">
+    <h2 class="kopf">Nach dem Umbau</h2>
+    <div class="demo kompakt breit" data-schritte="6.10 10.3 9.9"></div>
+  </section>
+
+  <!-- 10 Grenzen ================================================================================================ -->
+  <section class="slide" data-duration="1:00">
+    <h2 class="kopf">Domain oder Nachschlagetabelle?</h2>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Enum-Domain</h3>
+        <ul class="small">
+          <li>stabile, technische Wertelisten: Status, Spannungsebene</li>
+          <li>Änderung nur durch Neuanlegen</li>
+          <li>keine Zeilen, auf die verwiesen wird, keine Joins</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Tabelle mit Foreign Key</h3>
+        <ul class="small">
+          <li>Werte haben eigene Eigenschaften</li>
+          <li>Werte kommen im Betrieb dazu</li>
+          <li>Pflege über die Anwendung</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+  <section class="slide" data-duration="1:30">
+    <h2 class="kopf">Das Kleingedruckte</h2>
+    <div class="bloecke">
+      <div><h3>Non-strict prüft keine Längen</h3><p class="small">Eine Domain mit 320 Zeichen hängt an einer Spalte mit 200 &ndash; die Länge der Domain ist dann nur Dokumentation. <code class="inline">strict</code> verlangt exakt denselben Typ.</p></div>
+      <div><h3>Eine einzelne Spalte lösen</h3><p class="small"><code class="inline">alter table … modify … drop domain</code> scheitert mit ORA-02000. Es geht nur über <code class="inline">drop domain … force</code> für alle Spalten.</p></div>
+      <div><h3>Namen</h3><p class="small">Eine eigene <code class="inline">email_d</code> verdeckt die mitgelieferte <code class="inline">SYS.EMAIL_D</code>.</p></div>
+      <div><h3>Werkzeuge</h3><p class="small">IDEs markieren gültige Domain-Syntax oft als Fehler. Die Datenbank entscheidet.</p></div>
+    </div>
+  </section>
+  <section class="slide" data-duration="0:30">
+    <h2 class="kopf">Was es noch gibt</h2>
+    <div class="grid-3">
+      <div class="card"><h3>Mehrspaltig</h3><p class="small">Betrag, Währung und Kurs als eine Einheit.</p></div>
+      <div class="card"><h3>Flexibel</h3><p class="small">Die Regel hängt an einer anderen Spalte, etwa die Adresse am Land.</p></div>
+      <div class="card"><h3>JSON</h3><p class="small">Ein JSON-Schema als Domain.</p></div>
+    </div>
+  </section>
+
+  <!-- 11 Zusammenfassung und Fragen ============================================================================= -->
+  <section class="slide" data-duration="1:30">
+    <h2 class="kopf">Sauber gemacht</h2>
+    <div class="grid-2">
+      <div class="card schmutzig">
+        <h3>Vorher</h3>
+        <table>
+          <tr><th>tabelle</th><th>check_constraint</th><th>trigger_name</th></tr>
+          <tr><td>KUNDE</td><td>regexp_like(email, …)</td><td></td></tr>
+          <tr><td>LIEFERANT</td><td>email like '%@%.%'</td><td>TBIU_LIEFERANT</td></tr>
+          <tr><td>MITARBEITER</td><td></td><td></td></tr>
+        </table>
+      </div>
+      <div class="card sauber">
+        <h3>Nachher, live</h3>
+        <div class="demo nur-ergebnis" data-schritte="2.1"></div>
+      </div>
+    </div>
+  </section>
+  <section class="slide" data-duration="1:00">
+    <h2 class="kopf">Fünf Dinge zum Mitnehmen</h2>
+    <ol class="bloecke">
+      <li>Eine Regel einmal als Domain festlegen und überall anhängen.</li>
+      <li>Erst mit <code class="inline">domain_check</code> die Störenfriede suchen und aufräumen, dann anhängen.</li>
+      <li>Bei Enum-Domains die Werte selbst angeben und die <code class="inline">create</code>-Anweisung im Repo aufbewahren.</li>
+      <li>Nach <code class="inline">force preserve</code> die alten Checks löschen.</li>
+      <li>PL/SQL kennt keine Domains: <code class="inline">domain_check</code> über SQL aufrufen.</li>
+    </ol>
+  </section>
+  <section class="slide center" data-duration="1:30">
+    <h2>Fragen?</h2>
+    <div class="qr-grid">
+      <figure><a class="qr qr-fertig" href="https://github.com/knutman/doag-2026-domains"><svg viewBox="0 0 37 37" class="segno"><path class="qrline" stroke="#111827" d="M2 2.5h7m1 0h2m3 0h1m5 0h1m1 0h3m2 0h7m-33 1h1m5 0h1m3 0h1m1 0h1m1 0h1m2 0h1m3 0h1m1 0h2m1 0h1m5 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m2 0h1m1 0h2m2 0h4m2 0h1m2 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h2m1 0h3m3 0h1m4 0h2m2 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m4 0h2m2 0h1m2 0h3m2 0h2m1 0h1m1 0h3m1 0h1m-33 1h1m5 0h1m1 0h1m1 0h2m1 0h1m1 0h2m1 0h2m6 0h1m5 0h1m-33 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-25 1h1m1 0h1m1 0h3m1 0h4m1 0h2m1 0h1m-24 1h1m1 0h1m1 0h9m2 0h1m4 0h3m1 0h3m1 0h2m1 0h1m-29 1h1m2 0h1m2 0h1m2 0h1m1 0h1m2 0h1m1 0h2m2 0h4m3 0h2m-33 1h5m1 0h1m3 0h5m1 0h2m1 0h1m2 0h1m1 0h1m1 0h3m1 0h1m1 0h1m-33 1h1m3 0h2m3 0h5m1 0h1m1 0h1m2 0h2m6 0h2m2 0h1m-31 1h1m2 0h2m2 0h2m3 0h1m1 0h1m2 0h1m1 0h1m1 0h1m2 0h1m2 0h1m2 0h1m-32 1h3m1 0h1m5 0h2m2 0h2m2 0h2m1 0h1m3 0h1m1 0h1m1 0h3m-32 1h3m1 0h3m3 0h5m5 0h1m1 0h7m1 0h1m-32 1h1m2 0h3m2 0h1m1 0h1m1 0h3m1 0h1m1 0h1m1 0h2m4 0h2m1 0h1m1 0h1m-31 1h3m2 0h1m2 0h3m1 0h1m1 0h1m1 0h2m1 0h3m1 0h1m1 0h1m1 0h1m2 0h1m-31 1h1m3 0h1m3 0h2m1 0h1m2 0h1m7 0h3m1 0h1m1 0h1m1 0h1m-26 1h2m1 0h5m7 0h1m2 0h2m4 0h3m-33 1h1m1 0h3m4 0h1m2 0h6m1 0h3m1 0h3m1 0h1m3 0h1m-32 1h1m5 0h1m3 0h1m4 0h1m2 0h2m1 0h1m1 0h1m7 0h2m-32 1h3m1 0h1m1 0h1m1 0h1m2 0h1m2 0h1m2 0h1m1 0h2m4 0h1m3 0h3m-33 1h2m4 0h3m2 0h3m3 0h1m1 0h1m1 0h1m2 0h1m1 0h4m2 0h1m-32 1h3m4 0h3m1 0h1m1 0h2m1 0h1m1 0h4m5 0h2m1 0h2m-33 1h1m2 0h1m2 0h2m1 0h2m1 0h2m2 0h1m1 0h4m2 0h5m2 0h1m-24 1h3m2 0h3m2 0h2m2 0h1m1 0h1m3 0h2m2 0h1m-33 1h7m1 0h3m5 0h2m2 0h1m3 0h1m1 0h1m1 0h4m-32 1h1m5 0h1m1 0h1m2 0h1m1 0h2m1 0h1m1 0h5m1 0h1m3 0h1m2 0h1m-32 1h1m1 0h3m1 0h1m2 0h4m1 0h2m4 0h3m1 0h6m2 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m1 0h1m3 0h1m1 0h1m1 0h1m4 0h1m2 0h1m1 0h2m1 0h1m-32 1h1m1 0h3m1 0h1m3 0h1m2 0h2m1 0h3m2 0h1m6 0h1m1 0h1m1 0h1m-33 1h1m5 0h1m1 0h4m1 0h1m1 0h1m5 0h1m2 0h1m-25 1h7m2 0h1m4 0h1m3 0h1m2 0h1m1 0h2m1 0h1m1 0h2m1 0h1"/></svg></a><figcaption>Folien und Skripte</figcaption></figure>
+      <figure><a class="qr qr-fertig" href="https://www.linkedin.com/in/knut-g%C3%B6ttling-87139a7a"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 37 37"><path stroke="#111827" d="M2 2.5h7m2 0h5m2 0h1m1 0h3m2 0h1m2 0h7m-33 1h1m5 0h1m2 0h1m1 0h1m1 0h4m1 0h1m3 0h1m1 0h1m1 0h1m5 0h1m-33 1h1m1 0h3m1 0h1m1 0h4m1 0h1m5 0h3m4 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h3m1 0h1m1 0h1m1 0h4m2 0h3m1 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h6m1 0h1m3 0h2m2 0h1m2 0h1m1 0h3m1 0h1m-33 1h1m5 0h1m1 0h1m1 0h2m1 0h6m1 0h2m4 0h1m5 0h1m-33 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-25 1h1m2 0h1m3 0h1m5 0h2m1 0h1m-25 1h1m1 0h5m3 0h1m2 0h3m1 0h1m1 0h1m2 0h3m1 0h5m-31 1h1m1 0h2m5 0h2m3 0h1m1 0h1m1 0h2m1 0h1m1 0h1m2 0h2m1 0h2m1 0h1m-33 1h1m1 0h1m2 0h3m7 0h3m4 0h1m1 0h1m3 0h1m1 0h2m-31 1h3m1 0h1m3 0h1m2 0h1m1 0h1m1 0h1m2 0h5m2 0h1m1 0h4m-30 1h3m1 0h1m4 0h2m4 0h1m1 0h2m2 0h2m2 0h1m1 0h1m1 0h2m-32 1h1m1 0h1m4 0h1m1 0h1m2 0h7m3 0h1m1 0h2m2 0h4m-33 1h1m1 0h1m2 0h2m5 0h2m3 0h1m2 0h1m1 0h1m1 0h3m2 0h1m1 0h1m-31 1h1m5 0h1m1 0h1m2 0h3m1 0h1m2 0h1m1 0h1m3 0h2m3 0h1m-30 1h1m1 0h2m1 0h1m2 0h3m2 0h1m2 0h1m4 0h4m1 0h2m3 0h1m-31 1h3m2 0h2m2 0h1m6 0h3m2 0h5m1 0h2m1 0h1m-30 1h4m2 0h1m1 0h2m1 0h2m2 0h1m1 0h3m2 0h1m1 0h2m1 0h1m-24 1h1m1 0h2m2 0h1m2 0h1m4 0h3m2 0h5m-31 1h4m1 0h3m1 0h2m5 0h1m1 0h3m3 0h2m1 0h3m1 0h1m-32 1h2m3 0h1m2 0h4m3 0h1m1 0h3m2 0h2m1 0h3m1 0h2m1 0h1m-33 1h1m1 0h2m1 0h4m2 0h3m1 0h2m3 0h1m3 0h2m2 0h4m-32 1h1m1 0h3m2 0h1m1 0h1m2 0h4m5 0h2m2 0h3m1 0h4m-33 1h1m2 0h2m1 0h3m1 0h3m1 0h2m1 0h2m3 0h1m1 0h5m1 0h2m-24 1h1m2 0h1m4 0h1m1 0h3m2 0h2m3 0h1m1 0h3m-33 1h7m2 0h2m2 0h1m1 0h2m1 0h1m2 0h1m1 0h2m1 0h1m1 0h1m1 0h2m-32 1h1m5 0h1m1 0h4m2 0h2m2 0h1m1 0h2m1 0h2m3 0h4m-32 1h1m1 0h3m1 0h1m1 0h1m3 0h1m1 0h1m3 0h1m1 0h1m3 0h6m1 0h1m-32 1h1m1 0h3m1 0h1m1 0h3m2 0h1m1 0h5m1 0h3m1 0h1m2 0h1m1 0h3m-33 1h1m1 0h3m1 0h1m1 0h2m1 0h1m1 0h2m2 0h1m2 0h8m1 0h1m-30 1h1m5 0h1m2 0h1m1 0h4m1 0h1m2 0h5m1 0h1m2 0h1m1 0h1m-31 1h7m1 0h2m1 0h1m1 0h1m3 0h1m4 0h3m2 0h1m1 0h1m1 0h1"/></svg></a><figcaption>Knut Göttling</figcaption></figure>
+    </div>
+  </section>
+
+</div>
+
+<div class="footer-text">Datenhygiene mit SQL Domains &middot; Knut Göttling &middot; DOAG 2026</div>
+
+<nav class="controls">
+  <button id="prev" title="Zurück (←)">&#8249;</button>
+  <span class="counter" id="counter">1 / 1</span>
+  <span class="counter clock" id="clock"></span>
+  <button id="next" title="Weiter (→)">&#8250;</button>
+</nav>
+<div class="keys">
+  <kbd>←</kbd> <kbd>→</kbd> blättern &middot; <kbd>Enter</kbd> Uhr starten, dann nächster Schritt &middot; <kbd>F</kbd> Vollbild &middot;
+  <kbd>T</kbd> Uhr ein/aus &middot; <kbd>R</kbd> Uhr zurück
+</div>
+
+<script>
+// ORDS-Modul mit den Demo-Schritten (Schema-Alias doag_domains, Modulpfad /folien/, siehe Datenbank/04_ords.sql)
+const ORDS_BASE = 'http://localhost:8080/ords/doag_domains/folien/';
+const FETCH_TIMEOUT_MS = 60000;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// SQL einfärben
+// ---------------------------------------------------------------------------------------------------------------------
+const KEYWORDS = new Set(('select from where and or in as order by group union all distinct count case when then else ' +
+  'end insert into values update set delete create alter drop table domain modify add constraint check display ' +
+  'annotations enum strict default not null is like left join on force preserve if exists trigger declare begin ' +
+  'procedure boolean varchar2 char integer raise_application_error exception for loop execute immediate upper lower ' +
+  'replace trim regexp_like regexp_replace regexp_substr domain_check domain_display domain_order').split(' '));
+
+function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function faerben(src) {
+  const token = /(--[^\n]*)|('(?:[^']|'')*')|(\b\d+(?:\.\d+)?\b)|([A-Za-zÄÖÜäöüß_][A-Za-z0-9ÄÖÜäöüß_$#]*)|([\s\S])/g;
+  let html = '', m;
+  while ((m = token.exec(src)) !== null) {
+    if (m[1]) html += `<span class="comment">${escapeHtml(m[1])}</span>`;
+    else if (m[2]) html += `<span class="str">${escapeHtml(m[2])}</span>`;
+    else if (m[3]) html += `<span class="num">${m[3]}</span>`;
+    else if (m[4]) html += KEYWORDS.has(m[4].toLowerCase()) ? `<span class="kw">${m[4]}</span>` : m[4];
+    else html += escapeHtml(m[5]);
+  }
+  return html;
+}
+
+document.querySelectorAll('pre.sql').forEach(pre => { pre.innerHTML = faerben(pre.textContent); });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Zugriff auf ORDS
+// ---------------------------------------------------------------------------------------------------------------------
+async function abrufen(pfad, methode) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const antwort = await fetch(ORDS_BASE + pfad, { method: methode || 'GET', signal: controller.signal });
+    if (!antwort.ok) throw new Error(`HTTP ${antwort.status}`);
+    return await antwort.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Text und Art eines Schritts, je Nummer nur einmal geholt
+const texte = new Map();
+function schrittText(nummer) {
+  if (!texte.has(nummer)) texte.set(nummer, abrufen('schritt/' + nummer));
+  return texte.get(nummer);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Demo-Blöcke: links die Schritte, rechts das Ergebnis
+// ---------------------------------------------------------------------------------------------------------------------
+function kurzMeldung(ergebnis) {
+  // eine Zeile mit wenigen Spalten steht gleich im Status, etwa „leitungen 15 · schreibweisen 14“
+  if (ergebnis.zeilen && ergebnis.zeilen.length === 1 && Object.keys(ergebnis.zeilen[0]).length <= 3 &&
+      Object.values(ergebnis.zeilen[0]).every(v => String(v).length <= 30)) {
+    return Object.entries(ergebnis.zeilen[0]).map(([k, v]) => `${k.toLowerCase()} ${v}`).join(' · ');
+  }
+  if (ergebnis.zeilen) return `${ergebnis.zeilen.length} ${ergebnis.zeilen.length === 1 ? 'Zeile' : 'Zeilen'}`;
+  const erste = String(ergebnis.meldung || '').split('\n').find(z => /ORA-\d+|PLS-\d+/.test(z) && !/ORA-06550|ORA-06512/.test(z));
+  return erste || String(ergebnis.meldung || '').split('\n')[0];
+}
+
+function zeigeErgebnis(demo, nummer, ergebnis) {
+  const ziel = demo.querySelector('.ergebnis');
+  ziel.innerHTML = '';
+  if (!demo.classList.contains('nur-ergebnis')) {
+    const titel = document.createElement('div');
+    titel.className = 'titel';
+    titel.textContent = `Ergebnis von Schritt ${nummer}`;
+    ziel.appendChild(titel);
+  }
+  if (ergebnis.zeilen) {
+    if (ergebnis.zeilen.length === 0) {
+      ziel.insertAdjacentHTML('beforeend', '<p class="leer">keine Zeilen</p>');
+      return;
+    }
+    const spalten = Object.keys(ergebnis.zeilen[0]);
+    const tabelle = document.createElement('table');
+    const kopf = tabelle.insertRow();
+    spalten.forEach(s => { const th = document.createElement('th'); th.textContent = s.toLowerCase(); kopf.appendChild(th); });
+    ergebnis.zeilen.forEach(zeile => {
+      const tr = tabelle.insertRow();
+      spalten.forEach(s => {
+        const td = tr.insertCell();
+        const wert = zeile[s];
+        if (wert === null || wert === undefined) { td.className = 'null'; td.textContent = 'null'; }
+        else if (wert === true) { td.className = 'wahr'; td.textContent = 'true'; }
+        else if (wert === false) { td.className = 'falsch'; td.textContent = 'false'; }
+        else {
+          td.textContent = typeof wert === 'object' ? JSON.stringify(wert) : String(wert);
+          if (td.textContent.length > 40) td.className = 'lang';
+        }
+      });
+    });
+    ziel.appendChild(tabelle);
+  } else {
+    const box = document.createElement('div');
+    box.className = 'meldung ' + (ergebnis.ok ? 'ok' : 'fehler');
+    box.textContent = ergebnis.meldung;
+    ziel.appendChild(box);
+  }
+}
+
+function markiereNaechsten(demo) {
+  const zeilen = Array.from(demo.querySelectorAll('.schritt'));
+  const naechster = zeilen.find(z => !z.classList.contains('erledigt'));
+  zeilen.forEach(z => z.classList.toggle('naechster', z === naechster));
+}
+
+async function ausfuehren(demo, zeile) {
+  const nummer = zeile.dataset.nummer;
+  const knopf = zeile.querySelector('button.los');
+  const status = zeile.querySelector('.status');
+  knopf.disabled = true;
+  status.className = 'status';
+  status.textContent = 'läuft …';
+  try {
+    const ergebnis = await abrufen('schritt/' + nummer, 'POST');
+    status.className = 'status ' + (ergebnis.ok ? 'ok' : 'fehler');
+    status.textContent = (ergebnis.ok ? '✓ ' : '✗ ') + kurzMeldung(ergebnis);
+    zeile.ergebnis = ergebnis;
+    zeigeErgebnis(demo, nummer, ergebnis);
+  } catch (fehler) {
+    status.className = 'status fehler';
+    status.textContent = 'keine Verbindung zu ORDS';
+  } finally {
+    knopf.disabled = false;
+    zeile.classList.add('erledigt');
+    markiereNaechsten(demo);
+  }
+}
+
+function baueDemo(demo) {
+  const nummern = demo.dataset.schritte.trim().split(/\s+/);
+  const nurErgebnis = demo.classList.contains('nur-ergebnis');
+  demo.innerHTML = '';
+  const liste = document.createElement('div');
+  liste.className = 'schritte';
+  if (nurErgebnis) liste.style.display = 'none';
+  nummern.forEach(nummer => {
+    const zeile = document.createElement('div');
+    zeile.className = 'schritt';
+    zeile.dataset.nummer = nummer;
+    zeile.innerHTML = `<header><span class="nr">${nummer}</span><button class="los">▶ Ausführen</button>` +
+                      `<span class="status"></span></header><pre class="sql">…</pre>`;
+    zeile.querySelector('button.los').addEventListener('click', (e) => { e.stopPropagation(); ausfuehren(demo, zeile); });
+    // Klick auf einen schon ausgeführten Schritt zeigt sein Ergebnis noch einmal
+    zeile.addEventListener('click', () => { if (zeile.ergebnis) zeigeErgebnis(demo, nummer, zeile.ergebnis); });
+    liste.appendChild(zeile);
+    schrittText(nummer)
+      .then(s => { zeile.querySelector('pre').innerHTML = s.anweisung ? faerben(s.anweisung) : `Schritt ${nummer} fehlt in pa_demo`; })
+      .catch(() => { zeile.querySelector('pre').textContent = 'keine Verbindung zu ORDS'; });
+  });
+  const ergebnis = document.createElement('div');
+  ergebnis.className = 'ergebnis';
+  ergebnis.innerHTML = nurErgebnis ? '' : '<p class="leer">Das Ergebnis erscheint hier.</p>';
+  demo.appendChild(liste);
+  demo.appendChild(ergebnis);
+  if (nurErgebnis) demo.style.gridTemplateColumns = '1fr';
+  markiereNaechsten(demo);
+}
+
+const demos = Array.from(document.querySelectorAll('.demo'));
+demos.forEach(baueDemo);
+
+// Enter: den nächsten noch nicht ausgeführten Schritt der Folie ausführen
+function naechsterSchritt(slide) {
+  for (const demo of slide.querySelectorAll('.demo')) {
+    const zeile = Array.from(demo.querySelectorAll('.schritt')).find(z => !z.classList.contains('erledigt'));
+    if (zeile) { ausfuehren(demo, zeile); return; }
+  }
+}
+
+// Zurücksetzen: Wildwuchs in der Datenbank herstellen und alle Ergebnisse auf den Folien leeren
+document.getElementById('zuruecksetzen').addEventListener('click', async () => {
+  const status = document.getElementById('zuruecksetzen-status');
+  status.textContent = 'läuft …';
+  try {
+    const ergebnis = await abrufen('zuruecksetzen', 'POST');
+    demos.forEach(baueDemo);
+    status.textContent = ergebnis.meldung;
+  } catch (fehler) {
+    status.textContent = 'keine Verbindung zu ORDS';
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Verweise und Checks
+// ---------------------------------------------------------------------------------------------------------------------
+(function () {
+  const alle = Array.from(document.querySelectorAll('.slide'));
+  const nummer = id => alle.indexOf(document.getElementById(id)) + 1;
+  // <a class="folienverweis" data-folie="erste-id [letzte-id]">: Text „Folie 8“ oder „Folien 8–10“, Sprung auf die erste
+  document.querySelectorAll('a.folienverweis').forEach(a => {
+    const ziele = a.dataset.folie.trim().split(/\s+/).map(nummer);
+    a.href = '#' + ziele[0];
+    a.textContent = ziele.length > 1 ? `Folien ${ziele[0]}–${ziele[ziele.length - 1]}` : `Folie ${ziele[0]}`;
+  });
+  // <section data-check="n">: Plakette mit Nummer und Namen des Checks aus der Liste auf der Datenmodell-Folie
+  document.querySelectorAll('.slide[data-check]').forEach(folie => {
+    const check = document.getElementById('check-' + folie.dataset.check);
+    const marke = document.createElement('div');
+    marke.className = 'check-marke';
+    marke.innerHTML = `<span class="nr">${folie.dataset.check}</span>`;
+    marke.appendChild(document.createTextNode(check.dataset.name));
+    folie.prepend(marke);
+  });
+})();
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------------------------------------------------
+(function () {
+  const slides    = Array.from(document.querySelectorAll('.slide'));
+  const total     = slides.length;
+  const prevBtn   = document.getElementById('prev');
+  const nextBtn   = document.getElementById('next');
+  const counterEl = document.getElementById('counter');
+  const clockEl   = document.getElementById('clock');
+  const progress  = document.getElementById('progress');
+
+  // geplante Dauer jeder Folie in Sekunden, aus data-duration="m:ss"
+  const toSeconds = t => { const [m, s] = (t || '0:00').split(':').map(Number); return m * 60 + s; };
+  // überzogene Zeit läuft ohne Vorzeichen weiter, die rote Farbe zeigt den Verzug
+  const formatTime = sec => {
+    const betrag = Math.floor(Math.abs(sec));
+    return `${Math.floor(betrag / 60)}:${String(betrag % 60).padStart(2, '0')}`;
+  };
+  const dauer = slides.map(s => toSeconds(s.dataset.duration));
+  const restPlan = dauer.map((d, i) => dauer.slice(i).reduce((a, b) => a + b, 0));   // geplante Zeit ab Folie i
+  const rahmen = restPlan[0];   // Ende = Summe aller Folien
+
+  let idx = 0;
+  let talkStart = null;    // erstes Enter: Beginn des Vortrags
+  let slideStart = null;   // Betreten der aktuellen Folie
+
+  // Seite: geplante Dauer minus Zeit auf dieser Folie, rot wenn überzogen.
+  // Ende: Summe aller Folien minus verstrichene Zeit, rot wenn der restliche Plan nicht mehr hineinpasst.
+  function updateClock() {
+    const jetzt = Date.now();
+    const aufFolie = talkStart ? (jetzt - slideStart) / 1000 : 0;
+    const verstrichen = talkStart ? (jetzt - talkStart) / 1000 : 0;
+    const restSeite = dauer[idx] - aufFolie;
+    const restEnde = rahmen - verstrichen;
+    const nochGeplant = restPlan[idx] - Math.min(aufFolie, dauer[idx]);
+    const farbe = ok => !talkStart ? '' : (ok ? 'im-plan' : 'im-verzug');
+    clockEl.innerHTML = `${idx + 1} / ${slides.length}` +
+      ` · <span class="rest ${farbe(restSeite >= 0)}">${formatTime(restSeite)}</span>` +
+      ` · <span class="rest ${farbe(nochGeplant <= restEnde)}">${formatTime(restEnde)}</span>`;
+  }
+
+  function show(n) {
+    const neu = Math.max(0, Math.min(n, total - 1));
+    if (neu !== idx || slideStart === null) slideStart = Date.now();
+    idx = neu;
+    slides.forEach((s, i) => s.classList.toggle('active', i === idx));
+    document.body.classList.toggle('first-slide', idx === 0);
+    document.body.classList.toggle('last-slide', idx === total - 1);
+    counterEl.textContent = `${idx + 1} / ${total}`;
+    prevBtn.disabled = (idx === 0);
+    nextBtn.disabled = (idx === total - 1);
+    progress.style.width = `${((idx + 1) / total) * 100}%`;
+    history.replaceState(null, '', `#${idx + 1}`);
+    updateClock();
+  }
+
+  function fromHash() {
+    const n = parseInt(location.hash.replace('#', ''), 10);
+    if (!isNaN(n) && n >= 1 && n <= total) show(n - 1);
+    else show(0);
+  }
+
+  prevBtn.addEventListener('click', () => show(idx - 1));
+  nextBtn.addEventListener('click', () => show(idx + 1));
+  window.addEventListener('hashchange', fromHash);
+  setInterval(updateClock, 1000);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'PageDown':
+      case ' ':
+        show(idx + 1); e.preventDefault(); break;
+      case 'ArrowLeft':
+      case 'PageUp':
+        show(idx - 1); e.preventDefault(); break;
+      case 'Home':
+        show(0); e.preventDefault(); break;
+      case 'End':
+        show(total - 1); e.preventDefault(); break;
+      case 'Enter':
+        // das erste Enter startet die Uhr, jedes weitere führt den nächsten Schritt aus
+        if (talkStart === null) { talkStart = slideStart = Date.now(); updateClock(); }
+        else naechsterSchritt(slides[idx]);
+        e.preventDefault(); break;
+      case 'f':
+      case 'F':
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen();
+        break;
+      case 't':
+      case 'T':
+        document.body.classList.toggle('show-clock');
+        break;
+      case 'r':
+      case 'R':
+        // Uhr anhalten und zurücksetzen; das nächste Enter startet sie neu
+        talkStart = null;
+        slideStart = Date.now();
+        updateClock();
+        break;
+    }
+  });
+
+  // die Uhr ist von Anfang an eingeblendet, Taste T blendet sie aus und wieder ein
+  document.body.classList.add('show-clock');
+
+  if (new URLSearchParams(location.search).has('druck')) {
+    // Druckansicht: alle Folien zeigen; Ergebnisse gibt es nur live
+    document.body.classList.add('druck');
+    slides.forEach(s => s.classList.add('active'));
+  } else {
+    fromHash();
+  }
+})();
+</script>
+
+</body>
+</html>

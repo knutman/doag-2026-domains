@@ -1,0 +1,8 @@
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# Stände zum Verschicken (PDF und HTML mit eingefrorenen Daten)
+Export/
