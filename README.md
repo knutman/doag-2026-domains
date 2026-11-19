@@ -55,7 +55,7 @@ DOAG_DOMAINS `pa_demo.pck`, `02_wildwuchs.sql` und `04_ords.sql`.
 
 ## Vortragen
 
-`Vortrag\start.cmd` öffnet die Folien unter `http://localhost:8765/Folien.html`. Auf jeder Demo-Folie führt
+`Vortrag\start.cmd` öffnet die Folien unter `http://localhost:8766/Folien.html`. Auf jeder Demo-Folie führt
 **▶ Ausführen** genau den angezeigten Schritt aus, **Enter** den nächsten noch offenen. Gewollte Fehler erscheinen rot
 mit der Oracle-Meldung. Der Knopf **Wildwuchs herstellen** auf der Titelfolie setzt die Datenbank vor jedem Durchlauf
 zurück.
@@ -66,5 +66,5 @@ Die Uhr unten rechts zeigt Seitenzahl, verbleibende Zeit der Seite und bis zum E
 Tasten: **←/→** blättern, **Enter** Uhr starten, danach nächster Schritt, **F** Vollbild, **T** Uhr ein- und
 ausblenden, **R** Uhr anhalten und zurücksetzen.
 
-Alle Personen, Firmen, Adressen und Nummern im Stadtwerk sind erfunden; E-Mail-Adressen stehen nur unter den
+Alle Personen, Firmen, Emails und Telefonnummern im Stadtwerk sind erfunden; Emails stehen nur unter den
 reservierten Domains `example.com`, `example.org`, `example.net` und `*.example`.

@@ -3,7 +3,7 @@
 --   GET  schritt/:nummer   Nummer, Art und Text des Schritts (aus pa_demo)
 --   POST schritt/:nummer   führt den Schritt aus, Antwort als JSON mit ok, zeilen oder meldung
 --   POST zuruecksetzen     stellt den Wildwuchs wieder her
--- Ausgeführt wird nur, was in pa_demo steht. POST nur von den lokal ausgelieferten Folien (http://localhost:8765).
+-- Ausgeführt wird nur, was in pa_demo steht. POST nur von den lokal ausgelieferten Folien (http://localhost:8766).
 -- Ausführen als DOAG_DOMAINS nach pa_demo.pck. Wiederholbar: define_module ersetzt das Modul samt Endpunkten.
 
 begin
@@ -24,7 +24,7 @@ begin
                      p_comments => 'Demo-Schritte für die Folien „Datenhygiene mit SQL Domains“');
 
   ords.set_module_origins_allowed(p_module_name => 'folien',
-                                  p_origins_allowed => 'http://localhost:8765');
+                                  p_origins_allowed => 'http://localhost:8766');
 
   ords.define_template(p_module_name => 'folien',
                        p_pattern => 'schritt/:nummer',
